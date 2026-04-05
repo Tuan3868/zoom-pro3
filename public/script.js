@@ -9,7 +9,7 @@ document.getElementById("info").innerText = name + " - Room: " + roomId;
 
 let localStream;
 let peers = {};
-let videoElements = {}; // 🔥 tránh trùng video
+let videoElements = {}; // tránh trùng video
 
 const config = {
   iceServers: [
@@ -22,7 +22,7 @@ const config = {
   ],
 };
 
-// 🎥 Lấy cam + mic
+// 🎥 LẤY MEDIA
 async function getMedia() {
   try {
     return await navigator.mediaDevices.getUserMedia({
@@ -44,7 +44,7 @@ getMedia().then((stream) => {
   socket.emit("join-room", { roomId, name });
 });
 
-// 👥 user cũ
+// 👥 DANH SÁCH USER
 socket.on("all-users", (users) => {
   users.forEach((user) => {
     if (user.id !== socket.id) {
@@ -53,12 +53,12 @@ socket.on("all-users", (users) => {
   });
 });
 
-// 👤 user mới
+// 👤 USER MỚI
 socket.on("user-connected", (user) => {
   createPeer(user.id, false);
 });
 
-// ❌ user rời
+// ❌ USER RỜI
 socket.on("user-disconnected", (id) => {
   if (videoElements[id]) {
     videoElements[id].remove();
@@ -94,25 +94,30 @@ socket.on("signal", async ({ from, data }) => {
   }
 
   if (data.candidate) {
-    await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+    try {
+      await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+    } catch (e) {
+      console.log("ICE error", e);
+    }
   }
 });
 
-// 🔗 tạo peer
+// 🔗 TẠO PEER
 function createPeer(userId, initiator) {
-  const peer = new RTCPeerConnection(config);
+  if (peers[userId]) return peers[userId];
 
+  const peer = new RTCPeerConnection(config);
   peers[userId] = peer;
 
+  // add stream
   localStream.getTracks().forEach((track) => {
     peer.addTrack(track, localStream);
   });
 
-  // 🔥 FIX trùng video
+  // nhận video + audio
   peer.ontrack = (e) => {
-    if (!videoElements[userId]) {
-      addVideo(userId, e.streams[0]);
-    }
+    const stream = e.streams[0];
+    addVideo(userId, stream);
   };
 
   peer.onicecandidate = (e) => {
@@ -137,7 +142,7 @@ function createPeer(userId, initiator) {
   return peer;
 }
 
-// 🎥 add video (FIX full)
+// 🎥 HIỂN VIDEO (FIX TRÙNG)
 function addVideo(id, stream, mute = false) {
   if (videoElements[id]) return;
 
@@ -154,17 +159,21 @@ function addVideo(id, stream, mute = false) {
 // 🎤 MIC
 function toggleMic() {
   const track = localStream.getAudioTracks()[0];
-  if (track) track.enabled = !track.enabled;
+  track.enabled = !track.enabled;
 }
 
-// 📷 CAMERA
+// 📷 CAM
 function toggleCam() {
-  localStream.getVideoTracks().forEach((track) => {
-    track.enabled = !track.enabled;
-  });
+  const track = localStream.getVideoTracks()[0];
+  track.enabled = !track.enabled;
 }
 
-// 🖥️ SHARE MÀN HÌNH (FIX)
+// 🚪 RỜI
+function leave() {
+  window.location.href = "/";
+}
+
+// 🖥️ SHARE
 async function shareScreen() {
   const screen = await navigator.mediaDevices.getDisplayMedia({
     video: true,
@@ -178,9 +187,6 @@ async function shareScreen() {
     if (sender) sender.replaceTrack(track);
   }
 
-  // 🔥 update local video
-  addVideo("me", new MediaStream([track]), true);
-
   track.onended = () => {
     const cam = localStream.getVideoTracks()[0];
 
@@ -191,12 +197,5 @@ async function shareScreen() {
 
       if (sender) sender.replaceTrack(cam);
     }
-
-    addVideo("me", localStream, true);
   };
-}
-
-// 🚪 rời phòng
-function leave() {
-  window.location.href = "/";
 }
